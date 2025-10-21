@@ -36,7 +36,7 @@ jobs:
       - name: Checkout canaicode_git_extractor repository
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.action_repository || 'hfduran/canaicode-git-extractor' }}
+          repository: 'hfduran/canaicode-git-extractor'
           path: extractor
 
       - name: Checkout calling repository
