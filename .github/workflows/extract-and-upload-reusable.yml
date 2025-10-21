@@ -1,0 +1,125 @@
+name: Extract Git Commits and Upload (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      start_date:
+        description: 'Start date (YYYY-MM-DD). If not provided, defaults to 30 days ago.'
+        required: false
+        type: string
+      end_date:
+        description: 'End date (YYYY-MM-DD). If not provided, defaults to today.'
+        required: false
+        type: string
+      repository:
+        description: 'Single repository URL or path (leave empty to use repos.txt or analyze calling repo)'
+        required: false
+        type: string
+      use_repos_file:
+        description: 'Whether to look for repos.txt in the calling repository'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      upload_url:
+        description: 'Endpoint URL to upload the Excel file'
+        required: true
+      upload_key:
+        description: 'Authentication key for the upload endpoint'
+        required: true
+
+jobs:
+  extract-and-upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout canaicode_git_extractor repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.action_repository || 'hfduran/canaicode-git-extractor' }}
+          path: extractor
+
+      - name: Checkout calling repository
+        uses: actions/checkout@v4
+        with:
+          path: target-repo
+          fetch-depth: 0  # Fetch full history for git analysis
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          pip install gitpython pandas pydantic xlsxwriter requests
+
+      - name: Set date range
+        id: dates
+        run: |
+          if [ -n "${{ inputs.start_date }}" ]; then
+            echo "start_date=${{ inputs.start_date }}" >> $GITHUB_OUTPUT
+            echo "end_date=${{ inputs.end_date }}" >> $GITHUB_OUTPUT
+          else
+            # Default: last 30 days
+            echo "start_date=$(date -d '30 days ago' +%Y-%m-%d)" >> $GITHUB_OUTPUT
+            echo "end_date=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract commits (single repository URL)
+        if: ${{ inputs.repository != '' }}
+        working-directory: extractor
+        run: |
+          python scripts/canaicode_git_extractor.py \
+            "${{ inputs.repository }}" \
+            --start "${{ steps.dates.outputs.start_date }}" \
+            --end "${{ steps.dates.outputs.end_date }}" \
+            --verbose
+
+      - name: Extract commits (from repos.txt file)
+        if: ${{ inputs.use_repos_file }}
+        working-directory: extractor
+        run: |
+          python scripts/canaicode_git_extractor.py \
+            --file ../target-repo/repos.txt \
+            --start "${{ steps.dates.outputs.start_date }}" \
+            --end "${{ steps.dates.outputs.end_date }}" \
+            --verbose
+
+      - name: Extract commits (analyze calling repository)
+        if: ${{ inputs.repository == '' && !inputs.use_repos_file }}
+        working-directory: extractor
+        run: |
+          python scripts/canaicode_git_extractor.py \
+            ../target-repo \
+            --start "${{ steps.dates.outputs.start_date }}" \
+            --end "${{ steps.dates.outputs.end_date }}" \
+            --verbose
+
+      - name: Find generated Excel file
+        id: find_file
+        working-directory: extractor
+        run: |
+          file=$(ls commits_*.xlsx | head -n 1)
+          echo "excel_file=$file" >> $GITHUB_OUTPUT
+          echo "Found file: $file"
+
+      - name: Upload to endpoint
+        working-directory: extractor
+        env:
+          UPLOAD_URL: ${{ secrets.upload_url }}
+          UPLOAD_KEY: ${{ secrets.upload_key }}
+        run: |
+          python scripts/upload_to_endpoint.py \
+            "${{ steps.find_file.outputs.excel_file }}" \
+            --url "$UPLOAD_URL" \
+            --key "$UPLOAD_KEY" \
+            --verbose
+
+      - name: Upload artifact (backup)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: commit-data-${{ steps.dates.outputs.start_date }}-to-${{ steps.dates.outputs.end_date }}
+          path: extractor/commits_*.xlsx
+          retention-days: 30

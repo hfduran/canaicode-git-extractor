@@ -1,0 +1,41 @@
+name: Extract Git Commits and Upload (Example)
+
+# This is an example workflow showing how to use the reusable workflow.
+# Users should copy this pattern to their own repositories.
+
+on:
+  schedule:
+    # Run daily at 1 AM UTC (adjust as needed)
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Start date (YYYY-MM-DD, leave empty for last 30 days)'
+        required: false
+        type: string
+      end_date:
+        description: 'End date (YYYY-MM-DD, leave empty for today)'
+        required: false
+        type: string
+      repository:
+        description: 'Single repository URL (leave empty to analyze this repo)'
+        required: false
+        type: string
+      use_repos_file:
+        description: 'Use repos.txt file instead'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  extract-and-upload:
+    # Call the reusable workflow
+    uses: ./.github/workflows/extract-and-upload-reusable.yml
+    with:
+      start_date: ${{ inputs.start_date }}
+      end_date: ${{ inputs.end_date }}
+      repository: ${{ inputs.repository }}
+      use_repos_file: ${{ inputs.use_repos_file }}
+    secrets:
+      upload_url: ${{ secrets.UPLOAD_ENDPOINT_URL }}
+      upload_key: ${{ secrets.UPLOAD_AUTH_KEY }}
