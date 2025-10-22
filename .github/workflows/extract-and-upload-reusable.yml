@@ -27,6 +27,9 @@ on:
       upload_key:
         description: 'Authentication key for the upload endpoint'
         required: true
+      user_id:
+        description: 'User ID for authentication'
+        required: true
 
 jobs:
   extract-and-upload:
@@ -109,10 +112,12 @@ jobs:
         env:
           UPLOAD_URL: ${{ secrets.upload_url }}
           UPLOAD_KEY: ${{ secrets.upload_key }}
+          USER_ID: ${{ secrets.user_id }}
         run: |
           python scripts/upload_to_endpoint.py \
             "${{ steps.find_file.outputs.excel_file }}" \
             --url "$UPLOAD_URL" \
+            --user-id "$USER_ID" \
             --key "$UPLOAD_KEY" \
             --verbose
 
